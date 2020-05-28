@@ -253,6 +253,8 @@ static struct forward_mapping *forward_map = NULL;
 static size_t forward_map_size = 0;
 static const char *forward_all_url = NULL;
 
+static int forward_to_https = 0;
+
 struct mime_mapping {
     char *extension, *mimetype;
 };
@@ -318,6 +320,7 @@ static const char *default_extension_map[] = {
     "image/gif"            " gif",
     "image/jpeg"           " jpeg jpe jpg",
     "image/png"            " png",
+    "image/svg+xml"        " svg svgz",
     "text/css"             " css",
     "text/html"            " html htm",
     "text/javascript"      " js",
@@ -1087,6 +1090,9 @@ static void parse_commandline(const int argc, char *argv[]) {
             if (++i >= argc)
                 errx(1, "missing number after --timeout");
             timeout_secs = (int)xstr_to_num(argv[i]);
+        }
+        else if (strcmp(argv[i], "--forward-https") == 0) {
+            forward_to_https = 1;
         }
 #ifdef HAVE_INET6
         else if (strcmp(argv[i], "--ipv6") == 0) {
@@ -1860,6 +1866,22 @@ static void process_get(struct connection *conn) {
                       "You requested an invalid URL: %s", conn->url);
         free(decoded_url);
         return;
+    }
+
+    if (forward_to_https) {
+        char *proto = parse_field(conn, "X-Forwarded-Proto: ");
+        if (proto) {
+            if (strcmp(proto, "http") == 0) {
+                char *host = parse_field(conn, "Host: ");
+                if (host) {
+                    redirect(conn, "https://%s%s", host, decoded_url);
+                    free(host);
+                    free(proto);
+                    return;
+                }
+            }
+            free(proto);
+        }
     }
 
     /* test the host against web forward options */
